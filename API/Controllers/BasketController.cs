@@ -30,7 +30,7 @@ public class BasketController(StoreContext context) : BaseApiController
 
         if (product == null) return BadRequest("Problem adding item to basket");
 
-        basket.AddItem(product, quantity);
+        basket!.AddItem(product, quantity);
 
         var result = await context.SaveChangesAsync() > 0;
 
