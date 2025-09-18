@@ -1,7 +1,6 @@
 {
   "dependencies": {
-    "@hookform/resolvers": "3.9.1",
-    "zod": "^3.22.4"
+    "@hookform/resolvers": "3.9.1"
   },
   "devDependencies": {
     "typescript": "^5.9.2"
