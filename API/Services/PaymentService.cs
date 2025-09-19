@@ -3,9 +3,10 @@ using Stripe;
 
 namespace API.Services;
 
-public class PaymentService(IConfiguration config)
+public class PaymentService(IConfiguration config, DiscountService discountService)
 {
-    public async Task<PaymentIntent> CreateOrUpdatePaymentIntent(Basket basket)
+    public async Task<PaymentIntent> CreateOrUpdatePaymentIntent(Basket basket,
+        bool removeDiscount = false)
     {
         StripeConfiguration.ApiKey = config["StripeSettings:SecretKey"];
 
@@ -14,12 +15,21 @@ public class PaymentService(IConfiguration config)
         var intent = new PaymentIntent();
         var subtotal = basket.Items.Sum(x => x.Quantity * x.Product.Price);
         var deliveryFee = subtotal > 10000 ? 0 : 500;
+        long discount = 0;
+
+        if (basket.Coupon != null)
+        {
+            discount = await discountService.CalculateDiscountFromAmount(basket.Coupon,
+            subtotal, removeDiscount);
+        }
+
+        var totalAmount = subtotal - discount + deliveryFee;
 
         if (string.IsNullOrEmpty(basket.PaymentIntentId))
         {
             var options = new PaymentIntentCreateOptions
             {
-                Amount = subtotal + deliveryFee,
+                Amount = totalAmount,
                 Currency = "usd",
                 PaymentMethodTypes = ["card"]
             };
@@ -29,7 +39,7 @@ public class PaymentService(IConfiguration config)
         {
             var options = new PaymentIntentUpdateOptions
             {
-                Amount = subtotal + deliveryFee
+                Amount = totalAmount
             };
             await service.UpdateAsync(basket.PaymentIntentId, options);
         }

@@ -2,12 +2,14 @@ using API.Data;
 using API.DTOs;
 using API.Entities;
 using API.Extensions;
+using API.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace API.Controllers;
 
-public class BasketController(StoreContext context) : BaseApiController
+public class BasketController(StoreContext context,
+    DiscountService couponService, PaymentService paymentService) : BaseApiController
 {
     [HttpGet]
     public async Task<ActionResult<BasketDto>> GetBasket()
@@ -47,6 +49,50 @@ public class BasketController(StoreContext context) : BaseApiController
         if (basket == null) return BadRequest("Unable to retrieve basket");
 
         basket.RemoveItem(productId, quantity);
+
+        var result = await context.SaveChangesAsync() > 0;
+
+        if (result) return Ok();
+
+        return BadRequest("Problem updating basket");
+    }
+
+    [HttpPost("{code}")]
+    public async Task<ActionResult<BasketDto>> AddCouponCode(string code)
+    {
+        
+        var basket = await RetrieveBasket();
+        if (basket == null || string.IsNullOrEmpty(basket.ClientSecret))
+            return BadRequest("Unable to apply voucher");
+
+        var coupon = await couponService.GetCouponFromPromoCode(code);
+        if (coupon == null) return BadRequest("Invalid coupon");
+        
+        basket.Coupon = coupon;
+        
+        var intent = await paymentService.CreateOrUpdatePaymentIntent(basket);
+        if (intent == null) return BadRequest("Problem applying coupon to basket");
+
+        var result = await context.SaveChangesAsync() > 0;
+
+        if (result) return CreatedAtAction(nameof(GetBasket), basket.ToDto());
+
+        return BadRequest("Problem updating basket");
+    }
+
+    [HttpDelete("remove-coupon")]
+    public async Task<ActionResult> RemoveCouponFromBasket()
+    {
+        
+        var basket = await RetrieveBasket();
+        if (basket == null || basket.Coupon == null
+            || string.IsNullOrEmpty(basket.ClientSecret))
+            return BadRequest("Unable to update basket with coupon");
+
+        var intent = await paymentService.CreateOrUpdatePaymentIntent(basket, true);
+        if (intent == null) return BadRequest("Problem removing coupon from basket");
+
+        basket.Coupon = null;
 
         var result = await context.SaveChangesAsync() > 0;
 
